@@ -6,6 +6,7 @@ import (
 	"os"
 	"bufio"
 	"strings"
+	"sync"
 )
 
 var tlds = []string{"com", "jp"}
@@ -45,6 +46,30 @@ func check_tld(tld string) {
 	fmt.Println("resolve " + domain + " to " + lookup_map[0])
 }
 
+func test_tld_worker(tasksCh <-chan string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	for {
+		tld, ok := <-tasksCh
+		if !ok {
+			return
+		}
+		check_tld(tld)
+	}
+}
+
+func test_tlds_pool(wg *sync.WaitGroup, workers int, tlds []string) {
+	tasksCh := make(chan string)
+
+	for i := 0; i < workers; i++ {
+		go test_tld_worker(tasksCh, wg)
+	}
+
+	for _, tld := range tlds {
+		tasksCh <- tld
+	}
+	close(tasksCh)
+}
+
 func main() {
 	var (
 		tld_file = flag.String("tld-file", "", "tld list")
@@ -59,7 +84,9 @@ func main() {
 		}
 	}
 
-	for _, tld := range tlds {
-		check_tld(tld)
-	}
+	var wg sync.WaitGroup
+	workers := 5
+	wg.Add(workers)
+	go test_tlds_pool(&wg, workers, tlds)
+	wg.Wait()
 }
